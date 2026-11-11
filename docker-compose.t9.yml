@@ -77,3 +77,4 @@ volumes:
 networks:
   ztreel9_net:
     driver: bridge
+
