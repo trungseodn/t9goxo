@@ -34,6 +34,7 @@ export default function SystemSettingsPage() {
   const [isUploadingBgm, setIsUploadingBgm] = useState(false);
   const [currentPlayingBgm, setCurrentPlayingBgm] = useState<string | null>(null);
   const [bgmAudio, setBgmAudio] = useState<HTMLAudioElement | null>(null);
+  const [uploadProgressText, setUploadProgressText] = useState<string>('');
 
   /** AI Live Health State */
   const [aiHealth, setAiHealth] = useState<any>(null);
@@ -98,7 +99,12 @@ export default function SystemSettingsPage() {
     if (bgmAudio) bgmAudio.pause();
 
     const audio = new Audio(url);
-    audio.play();
+    audio.play().catch((err) => {
+      console.warn('Lỗi khi phát audio thử:', err);
+      ztteam_showToast('Không thể phát file âm thanh này trên trình duyệt.', 'warning');
+      setCurrentPlayingBgm(null);
+      setBgmAudio(null);
+    });
     audio.onended = () => {
       setCurrentPlayingBgm(null);
       setBgmAudio(null);
@@ -108,24 +114,47 @@ export default function SystemSettingsPage() {
   };
 
   const ztteam_handleUploadBgm = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const fileList = e.target.files;
+    if (!fileList || fileList.length === 0) return;
 
+    const filesArray = Array.from(fileList);
     try {
       setIsUploadingBgm(true);
+      setUploadProgressText(
+        filesArray.length > 1
+          ? `Đang xử lý ${filesArray.length} file...`
+          : `Đang xử lý ${filesArray[0].name}...`
+      );
+
       const formData = new FormData();
-      formData.append('file', file);
+      filesArray.forEach((f) => {
+        formData.append('files', f);
+        formData.append('file', f);
+      });
+
       const res = await api.post('media/bgm/upload', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
+
       if (res.data?.success) {
-        ztteam_showToast('Đã tải bài nhạc lên thư viện thành công!', 'success');
+        const count = res.data.items?.length || filesArray.length;
+        ztteam_showToast(
+          res.data.message || `Đã tải lên và xử lý thành công ${count} file âm thanh!`,
+          'success'
+        );
+
+        if (res.data.failed && res.data.failed.length > 0) {
+          const failNames = res.data.failed.map((f: any) => `${f.filename} (${f.reason})`).join(', ');
+          ztteam_showToast(`Một số file không thể trích xuất âm thanh: ${failNames}`, 'warning');
+        }
+
         await ztteam_fetchBgmList();
       }
     } catch (err: any) {
       ztteam_showToast(err.response?.data?.message || 'Lỗi khi tải file âm thanh', 'error');
     } finally {
       setIsUploadingBgm(false);
+      setUploadProgressText('');
       e.target.value = '';
     }
   };
@@ -542,16 +571,19 @@ export default function SystemSettingsPage() {
               <span>Thư Viện Âm Thanh & Nhạc Nền Reels (BGM Library)</span>
             </h3>
             <p className="text-xs font-medium text-fb-text-muted mt-0.5">
-              Kho nhạc nền tự động hòa âm cho Video Hook 10s. Bạn có thể nghe thử, xóa và tải lên các bản nhạc MP3, M4A, WAV mới.
+              Kho nhạc nền tự động hòa âm cho Video Hook 10s. Hỗ trợ MP3, M4A, WAV, AAC và Video MP4 (tự động tách âm thanh). Hỗ trợ chọn và tải lên hàng loạt nhiều file cùng lúc.
             </p>
           </div>
 
-          <label className="bg-gradient-to-r from-fb-blue to-cyan-500 text-white px-4 py-2 rounded-full text-xs font-bold shadow-md shadow-blue-500/20 hover:opacity-90 transition-all flex items-center gap-1.5 cursor-pointer self-start sm:self-auto shrink-0">
-            <span className="material-symbols-outlined text-base">{isUploadingBgm ? 'sync' : 'upload_file'}</span>
-            <span>{isUploadingBgm ? 'Đang tải lên...' : '+ Tải Âm Thanh Mới'}</span>
+          <label className="bg-gradient-to-r from-fb-blue to-cyan-500 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-md shadow-blue-500/20 hover:opacity-90 transition-all flex items-center gap-1.5 cursor-pointer self-start sm:self-auto shrink-0">
+            <span className={`material-symbols-outlined text-base ${isUploadingBgm ? 'animate-spin' : ''}`}>
+              {isUploadingBgm ? 'sync' : 'upload_file'}
+            </span>
+            <span>{isUploadingBgm ? (uploadProgressText || 'Đang tải lên...') : '+ Tải Âm Thanh / MP4 Hàng Loạt'}</span>
             <input
               type="file"
-              accept="audio/mp3,audio/wav,audio/m4a,audio/aac"
+              multiple
+              accept="audio/*,video/mp4,video/*,.mp4,.mp3,.wav,.m4a,.aac,.ogg,.mov,.webm"
               className="hidden"
               onChange={ztteam_handleUploadBgm}
               disabled={isUploadingBgm}

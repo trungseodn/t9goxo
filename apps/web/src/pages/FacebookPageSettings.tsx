@@ -171,7 +171,12 @@ export default function FacebookPageSettings() {
     }
 
     const audio = new Audio(url);
-    audio.play();
+    audio.play().catch((err) => {
+      console.warn('Lỗi khi phát audio thử:', err);
+      ztteam_showToast('Không thể phát file âm thanh này trên trình duyệt.', 'warning');
+      setCurrentPlayingBgm(null);
+      setBgmAudio(null);
+    });
     audio.onended = () => {
       setCurrentPlayingBgm(null);
       setBgmAudio(null);
@@ -180,23 +185,35 @@ export default function FacebookPageSettings() {
     setCurrentPlayingBgm(filename);
   };
 
-  /** Tải file âm thanh mới nhanh */
+  /** Tải file âm thanh mới nhanh (Hỗ trợ MP3, M4A, WAV, AAC, MP4 và tải hàng loạt) */
   const ztteam_uploadQuickBgm = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const fileList = e.target.files;
+    if (!fileList || fileList.length === 0) return;
 
+    const filesArray = Array.from(fileList);
     try {
       setIsUploadingBgm(true);
       const formData = new FormData();
-      formData.append('file', file);
+      filesArray.forEach((f) => {
+        formData.append('files', f);
+        formData.append('file', f);
+      });
+
       const res = await api.post('media/bgm/upload', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
+
       if (res.data?.success) {
-        ztteam_showToast('Tải bài nhạc mới lên thành công!', 'success');
+        const count = res.data.items?.length || filesArray.length;
+        ztteam_showToast(
+          res.data.message || `Đã tải lên thành công ${count} file âm thanh!`,
+          'success'
+        );
         await ztteam_loadBgmList();
         if (res.data.data?.filename) {
           setDefaultBgm(res.data.data.filename);
+        } else if (res.data.items?.[0]?.filename) {
+          setDefaultBgm(res.data.items[0].filename);
         }
       }
     } catch (err: any) {
@@ -1031,11 +1048,14 @@ export default function FacebookPageSettings() {
                         Nhạc Nền Video Reel (BGM)
                       </label>
                       <label className="text-[11px] font-bold text-cyan-400 hover:text-cyan-300 cursor-pointer flex items-center gap-1">
-                        <span className="material-symbols-outlined text-[15px]">{isUploadingBgm ? 'sync' : 'upload_file'}</span>
-                        <span>{isUploadingBgm ? 'Đang tải...' : '+ Tải nhạc mới'}</span>
+                        <span className={`material-symbols-outlined text-[15px] ${isUploadingBgm ? 'animate-spin' : ''}`}>
+                          {isUploadingBgm ? 'sync' : 'upload_file'}
+                        </span>
+                        <span>{isUploadingBgm ? 'Đang tải...' : '+ Tải nhạc / MP4 mới'}</span>
                         <input
                           type="file"
-                          accept="audio/mp3,audio/wav,audio/m4a,audio/aac"
+                          multiple
+                          accept="audio/*,video/mp4,video/*,.mp4,.mp3,.wav,.m4a,.aac,.ogg,.mov,.webm"
                           className="hidden"
                           onChange={ztteam_uploadQuickBgm}
                           disabled={isUploadingBgm}

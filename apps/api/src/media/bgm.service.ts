@@ -1,7 +1,11 @@
 import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import * as fs from 'fs';
 import * as path from 'path';
+import { exec } from 'child_process';
+import { promisify } from 'util';
 import { ztteam_getBgmPath } from '../common/ztteam_storage.util';
+
+const execAsync = promisify(exec);
 
 export interface ZTTeamBgmItem {
   id: string;
@@ -71,17 +75,24 @@ export class ZTTeamBgmService {
 
   /**
    * ZTTeam: Tải file âm thanh mới lên thư viện BGM
+   * Tự động trích xuất track âm thanh sang MP3 chất lượng cao nếu tải lên file Video MP4, MOV, WEBM
    */
   async ztteam_saveBgmFile(file: any): Promise<ZTTeamBgmItem> {
     if (!file) {
       throw new BadRequestException('Vui lòng chọn file âm thanh để tải lên');
     }
 
-    const audioExts = ['.mp3', '.m4a', '.wav', '.aac', '.ogg', '.mp4'];
+    const audioExts = ['.mp3', '.m4a', '.wav', '.aac', '.ogg', '.flac'];
+    const videoExts = ['.mp4', '.mov', '.webm', '.mkv', '.m4v', '.avi', '.flv'];
     const originalExt = path.extname(file.originalname).toLowerCase();
 
-    if (!audioExts.includes(originalExt)) {
-      throw new BadRequestException(`Định dạng file không hỗ trợ: ${originalExt}. Chỉ chấp nhận MP3, M4A, WAV, AAC, MP4.`);
+    const isAudio = audioExts.includes(originalExt);
+    const isVideo = videoExts.includes(originalExt);
+
+    if (!isAudio && !isVideo) {
+      throw new BadRequestException(
+        `Định dạng file không hỗ trợ: ${originalExt}. Hệ thống hỗ trợ âm thanh (MP3, M4A, WAV, AAC, OGG) và Video (MP4, MOV, WEBM).`
+      );
     }
 
     const bgmDir = ztteam_getBgmPath();
@@ -96,32 +107,92 @@ export class ZTTeamBgmService {
       .replace(/_+/g, '_')
       .substring(0, 50);
 
-    const safeFilename = `${baseName}_${Date.now()}${originalExt}`;
+    /**
+     * Nếu là video (MP4, MOV,...), luôn trích xuất sang định dạng .mp3 để trình duyệt phát thử
+     * và render video mượt mà 100%. Nếu là audio thì giữ nguyên phần mở rộng hoặc lưu mp3.
+     */
+    const finalExt = isVideo ? '.mp3' : originalExt;
+    const safeFilename = `${baseName}_${Date.now()}${finalExt}`;
     const targetPath = path.join(bgmDir, safeFilename);
 
-    fs.copyFileSync(file.path, targetPath);
+    if (isVideo) {
+      /** Trích xuất stream âm thanh từ video sang MP3 bằng FFmpeg */
+      try {
+        await execAsync(`ffmpeg -nostdin -y -i "${file.path}" -vn -c:a libmp3lame -b:a 192k -ar 44100 "${targetPath}"`);
+      } catch (err: any) {
+        this.logger.error(`Trích xuất audio thất bại từ ${file.originalname}: ${err.message}`);
+        throw new BadRequestException(
+          `Không thể trích xuất âm thanh từ file video "${file.originalname}". Hãy đảm bảo video có chứa track âm thanh hợp lệ.`
+        );
+      }
+    } else {
+      fs.copyFileSync(file.path, targetPath);
+    }
 
     /** Xóa file tạm của multer */
     try {
-      if (fs.existsSync(file.path)) {
+      if (file.path && fs.existsSync(file.path)) {
         fs.unlinkSync(file.path);
       }
     } catch (e) {
       /** Bỏ qua */
     }
 
+    if (!fs.existsSync(targetPath)) {
+      throw new BadRequestException(`Lưu file âm thanh thất bại: ${file.originalname}`);
+    }
+
     const stat = fs.statSync(targetPath);
-    this.logger.log(`Uploaded BGM file: ${safeFilename} (${(stat.size / 1024 / 1024).toFixed(2)} MB)`);
+    this.logger.log(`Uploaded BGM file: ${safeFilename} (${(stat.size / 1024 / 1024).toFixed(2)} MB, isVideoExtracted=${isVideo})`);
+
+    const formattedTitle = baseName
+      .split('_')
+      .filter(Boolean)
+      .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(' ') || 'BGM Track';
 
     return {
       id: safeFilename,
       filename: safeFilename,
-      name: baseName.replace(/_/g, ' '),
+      name: formattedTitle,
       url: `/storage/bgm/${safeFilename}`,
       size_bytes: stat.size,
       size_formatted: (stat.size / (1024 * 1024)).toFixed(2) + ' MB',
       created_at: new Date().toISOString(),
     };
+  }
+
+  /**
+   * ZTTeam: Tải hàng loạt file âm thanh / video MP4 lên thư viện BGM cùng lúc
+   */
+  async ztteam_saveBgmFilesBulk(files: any[]): Promise<{
+    succeeded: ZTTeamBgmItem[];
+    failed: { filename: string; reason: string }[];
+  }> {
+    if (!files || files.length === 0) {
+      throw new BadRequestException('Vui lòng chọn ít nhất 1 file để tải lên');
+    }
+
+    const succeeded: ZTTeamBgmItem[] = [];
+    const failed: { filename: string; reason: string }[] = [];
+
+    for (const file of files) {
+      try {
+        const item = await this.ztteam_saveBgmFile(file);
+        succeeded.push(item);
+      } catch (err: any) {
+        failed.push({
+          filename: file.originalname || 'unknown',
+          reason: err.message || 'Lỗi không xác định',
+        });
+        /** Dọn dẹp file tạm nếu còn */
+        try {
+          if (file.path && fs.existsSync(file.path)) fs.unlinkSync(file.path);
+        } catch (_) {}
+      }
+    }
+
+    return { succeeded, failed };
   }
 
   /**
