@@ -19,7 +19,7 @@ export interface ZTTeamStoryTemplateItem {
   html_content: string;
   layout: {
     presetId: string;
-    category: 'ocean' | 'emerald' | 'obsidian' | 'gold' | 'earth';
+    category: 'ocean' | 'emerald' | 'obsidian' | 'gold' | 'earth' | 'crimson' | 'cyber' | 'frosted' | string;
     themeStyle: string;
     authorName: string;
     authorSubtitle: string;

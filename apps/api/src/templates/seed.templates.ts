@@ -1,4 +1,5 @@
 import { getTextStory50Templates } from './text_story_50_templates';
+import { getTextStory150MoreTemplates } from './text_story_150_more_templates';
 
 const teaserHtml = `
 <!--
@@ -205,9 +206,11 @@ export const seedTemplates = () => {
 
 
 
-  // Seed 50 bộ mẫu Text Story Reel đa dạng sắc màu điện ảnh (Không hồng/tím)
+  // Seed 200 bộ mẫu Text Story Reel đa dạng sắc màu điện ảnh (50 mẫu gốc + 150 mẫu tùy biến mới, Tuyệt đối không hồng/tím)
   const textStory50 = getTextStory50Templates();
+  const textStory150More = getTextStory150MoreTemplates();
   templates.push(...textStory50);
+  templates.push(...textStory150More);
 
   return templates;
 };

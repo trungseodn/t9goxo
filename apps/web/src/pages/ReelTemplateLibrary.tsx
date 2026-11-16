@@ -306,6 +306,9 @@ export default function ReelTemplateLibrary() {
     { id: 'obsidian', label: '🌑 Đen Obsidian' },
     { id: 'gold', label: '👑 Vàng Hổ Phách' },
     { id: 'earth', label: '☕ Cà Phê & Gỗ' },
+    { id: 'crimson', label: '🔥 Đỏ Kịch Tính' },
+    { id: 'cyber', label: '⚡ Cyber Tech' },
+    { id: 'frosted', label: '❄️ Kính Mờ & Băng' },
   ];
 
   const filteredTemplates = templates.filter((tpl) => {
@@ -320,11 +323,14 @@ export default function ReelTemplateLibrary() {
     if (filterCategory !== 'all') {
       if (tplCategory !== filterCategory) {
         const matchesCategory =
-          (filterCategory === 'ocean' && (tplName.includes('ocean') || tplName.includes('sapphire') || tplName.includes('cyan') || tplName.includes('arctic') || tplName.includes('biển'))) ||
-          (filterCategory === 'emerald' && (tplName.includes('emerald') || tplName.includes('forest') || tplName.includes('lục bảo') || tplName.includes('jade') || tplName.includes('mint') || tplName.includes('pine'))) ||
-          (filterCategory === 'obsidian' && (tplName.includes('obsidian') || tplName.includes('charcoal') || tplName.includes('slate') || tplName.includes('mono') || tplName.includes('đen') || tplName.includes('titanium'))) ||
-          (filterCategory === 'gold' && (tplName.includes('gold') || tplName.includes('amber') || tplName.includes('vàng') || tplName.includes('bronze') || tplName.includes('citrus') || tplName.includes('honey'))) ||
-          (filterCategory === 'earth' && (tplName.includes('espresso') || tplName.includes('wood') || tplName.includes('cà phê') || tplName.includes('walnut') || tplName.includes('mocha') || tplName.includes('chocolate')));
+          (filterCategory === 'ocean' && (tplName.includes('ocean') || tplName.includes('sapphire') || tplName.includes('cyan') || tplName.includes('arctic') || tplName.includes('biển') || tplName.includes('trench') || tplName.includes('glacier'))) ||
+          (filterCategory === 'emerald' && (tplName.includes('emerald') || tplName.includes('forest') || tplName.includes('lục bảo') || tplName.includes('jade') || tplName.includes('mint') || tplName.includes('pine') || tplName.includes('moss') || tplName.includes('rừng'))) ||
+          (filterCategory === 'obsidian' && (tplName.includes('obsidian') || tplName.includes('charcoal') || tplName.includes('slate') || tplName.includes('mono') || tplName.includes('đen') || tplName.includes('titanium') || tplName.includes('stealth') || tplName.includes('noir'))) ||
+          (filterCategory === 'gold' && (tplName.includes('gold') || tplName.includes('amber') || tplName.includes('vàng') || tplName.includes('bronze') || tplName.includes('citrus') || tplName.includes('honey') || tplName.includes('midas') || tplName.includes('pharaoh'))) ||
+          (filterCategory === 'earth' && (tplName.includes('espresso') || tplName.includes('wood') || tplName.includes('cà phê') || tplName.includes('walnut') || tplName.includes('mocha') || tplName.includes('chocolate') || tplName.includes('gỗ') || tplName.includes('leather'))) ||
+          (filterCategory === 'crimson' && (tplName.includes('crimson') || tplName.includes('ruby') || tplName.includes('blood') || tplName.includes('red') || tplName.includes('đỏ') || tplName.includes('dracula') || tplName.includes('garnet') || tplName.includes('burgundy'))) ||
+          (filterCategory === 'cyber' && (tplName.includes('cyber') || tplName.includes('matrix') || tplName.includes('hud') || tplName.includes('quantum') || tplName.includes('hacker') || tplName.includes('radar') || tplName.includes('voltage') || tplName.includes('hazard'))) ||
+          (filterCategory === 'frosted' && (tplName.includes('frosted') || tplName.includes('kính') || tplName.includes('băng') || tplName.includes('pearl') || tplName.includes('quartz') || tplName.includes('acrylic') || tplName.includes('snow') || tplName.includes('platinum')));
         if (!matchesCategory) return false;
       }
     }
@@ -532,11 +538,14 @@ export default function ReelTemplateLibrary() {
                   const cat = t.layout?.category;
                   if (cat === tab.id) return true;
                   const nm = (t.name || '').toLowerCase();
-                  if (tab.id === 'ocean') return nm.includes('ocean') || nm.includes('cyan') || nm.includes('sapphire') || nm.includes('arctic');
-                  if (tab.id === 'emerald') return nm.includes('emerald') || nm.includes('forest') || nm.includes('lục bảo') || nm.includes('jade');
-                  if (tab.id === 'obsidian') return nm.includes('obsidian') || nm.includes('slate') || nm.includes('mono') || nm.includes('charcoal');
-                  if (tab.id === 'gold') return nm.includes('gold') || nm.includes('amber') || nm.includes('vàng') || nm.includes('bronze');
-                  if (tab.id === 'earth') return nm.includes('espresso') || nm.includes('wood') || nm.includes('cà phê') || nm.includes('walnut');
+                  if (tab.id === 'ocean') return nm.includes('ocean') || nm.includes('cyan') || nm.includes('sapphire') || nm.includes('arctic') || nm.includes('biển') || nm.includes('trench') || nm.includes('glacier');
+                  if (tab.id === 'emerald') return nm.includes('emerald') || nm.includes('forest') || nm.includes('lục bảo') || nm.includes('jade') || nm.includes('mint') || nm.includes('pine') || nm.includes('moss') || nm.includes('rừng');
+                  if (tab.id === 'obsidian') return nm.includes('obsidian') || nm.includes('slate') || nm.includes('mono') || nm.includes('charcoal') || nm.includes('đen') || nm.includes('titanium') || nm.includes('stealth') || nm.includes('noir');
+                  if (tab.id === 'gold') return nm.includes('gold') || nm.includes('amber') || nm.includes('vàng') || nm.includes('bronze') || nm.includes('citrus') || nm.includes('honey') || nm.includes('midas') || nm.includes('pharaoh');
+                  if (tab.id === 'earth') return nm.includes('espresso') || nm.includes('wood') || nm.includes('cà phê') || nm.includes('walnut') || nm.includes('mocha') || nm.includes('chocolate') || nm.includes('gỗ') || nm.includes('leather');
+                  if (tab.id === 'crimson') return nm.includes('crimson') || nm.includes('ruby') || nm.includes('blood') || nm.includes('red') || nm.includes('đỏ') || nm.includes('dracula') || nm.includes('garnet') || nm.includes('burgundy');
+                  if (tab.id === 'cyber') return nm.includes('cyber') || nm.includes('matrix') || nm.includes('hud') || nm.includes('quantum') || nm.includes('hacker') || nm.includes('radar') || nm.includes('voltage') || nm.includes('hazard');
+                  if (tab.id === 'frosted') return nm.includes('frosted') || nm.includes('kính') || nm.includes('băng') || nm.includes('pearl') || nm.includes('quartz') || nm.includes('acrylic') || nm.includes('snow') || nm.includes('platinum');
                   return false;
                 }).length;
             const isActive = filterCategory === tab.id;
