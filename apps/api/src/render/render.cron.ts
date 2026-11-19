@@ -91,7 +91,7 @@ export class ZTTeamRenderCron implements OnApplicationBootstrap {
         },
         include: { page: true },
         orderBy: { created_at: 'desc' },
-        take: 4,
+        take: 2,
       });
 
       if (pendingImages.length === 0) return;
