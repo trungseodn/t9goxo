@@ -184,10 +184,19 @@ export class ZTTeamPublisherCron {
         const diffMinutesFromLastPost = lastPostTime ? Math.floor((now.getTime() - lastPostTime.getTime()) / 60000) : Infinity;
 
         let shouldPublish = false;
+        let slotLatenessMinutes = 0;
 
         if (schedule_mode === 'fixed') {
           if (schedule_fixed_times && Array.isArray(schedule_fixed_times) && schedule_fixed_times.length > 0) {
-            /** Luôn tính giờ và phút theo múi giờ chuẩn Việt Nam (Asia/Ho_Chi_Minh) */
+            /**
+             * ZTTeam: Thuật toán xác định Slot xuất bản chuẩn xác tuyệt đối (Bulletproof Absolute Slot Resolution)
+             * Giải quyết triệt để 2 lỗi nghiêm trọng:
+             * 1. Lỗi lặp nửa đêm: Các slot sau 23:00 không còn bị tính nhầm sang 23:00 hôm sau, chống đăng lặp 4-6 lần.
+             * 2. Lỗi bỏ lỡ: Cửa sổ dung sai mở rộng lên 120 phút (thay vì 60 phút) kèm cơ chế bắt kịp (Catch-up) tự động.
+             */
+            const nowMs = now.getTime();
+
+            /** Luôn tính giờ và phút theo múi giờ chuẩn Việt Nam (Asia/Ho_Chi_Minh - UTC+7) */
             const vnFormatter = new Intl.DateTimeFormat('en-US', {
               timeZone: 'Asia/Ho_Chi_Minh',
               year: 'numeric',
@@ -201,38 +210,64 @@ export class ZTTeamPublisherCron {
             const vnYear = parseInt(parts.find(p => p.type === 'year')?.value || '1970', 10);
             const vnMonth = parseInt(parts.find(p => p.type === 'month')?.value || '1', 10) - 1;
             const vnDay = parseInt(parts.find(p => p.type === 'day')?.value || '1', 10);
-            const vnH = parseInt(parts.find(p => p.type === 'hour')?.value || '0', 10);
-            const vnM = parseInt(parts.find(p => p.type === 'minute')?.value || '0', 10);
-            const currentMinutes = vnH * 60 + vnM;
 
-            for (const time of schedule_fixed_times as string[]) {
-              const [h, m] = time.split(':').map(Number);
-              const fixedTimeMinutes = h * 60 + m;
+            /**
+             * Tạo danh sách các slot trong 2 ngày (hôm qua và hôm nay theo giờ VN)
+             * Đảm bảo bao quát trọn vẹn các khung giờ vắt qua nửa đêm (23:xx -> 01:xx)
+             */
+            const candidateSlots: Array<{ slotTime: Date; timeStr: string }> = [];
 
-              /** Mở rộng khung giờ lên 60 phút để các Page xếp hàng tuần tự không bị lỡ lượt */
-              const isWithinWindow =
-                (currentMinutes >= fixedTimeMinutes && currentMinutes < fixedTimeMinutes + 60) ||
-                (fixedTimeMinutes + 60 >= 1440 && currentMinutes < (fixedTimeMinutes + 60) % 1440);
+            for (const offsetDay of [-1, 0]) {
+              for (const timeStr of schedule_fixed_times as string[]) {
+                const [h, m] = timeStr.split(':').map(Number);
+                // Giờ VN (UTC+7) -> Trừ 7 giờ để ra UTC chính xác
+                const slotUtc = new Date(Date.UTC(vnYear, vnMonth, vnDay + offsetDay, h - 7, m, 0, 0));
+                candidateSlots.push({ slotTime: slotUtc, timeStr });
+              }
+            }
 
-              if (isWithinWindow) {
-                /** Mốc thời gian chính xác của Slot hôm nay theo giờ VN (UTC+7 -> trừ 7 giờ lấy UTC) */
-                const slotStartTimeMs = Date.UTC(vnYear, vnMonth, vnDay, h - 7, m, 0);
+            // Sắp xếp các slot theo trình tự thời gian tăng dần
+            candidateSlots.sort((a, b) => a.slotTime.getTime() - b.slotTime.getTime());
 
-                /** Nếu Page đã đăng bài thực tế (posted_at) từ thời điểm slot này trở đi -> Slot này ĐÃ HOÀN THÀNH */
-                if (lastPostTime && lastPostTime.getTime() >= slotStartTimeMs) {
-                  this.logger.log(`Page ${page.name}: Slot ${time} đã được xuất bản (lúc ${lastPostTime.toLocaleTimeString('vi-VN')}). Bỏ qua.`);
-                  break;
-                }
+            // Dung sai cửa sổ xuất bản: 120 phút (2 tiếng)
+            const TOLERANCE_WINDOW_MS = 120 * 60 * 1000;
 
-                /** Đảm bảo giữa 2 bài đăng bất kỳ trên cùng 1 Page cách nhau ít nhất 15 phút */
-                if (diffMinutesFromLastPost < 15) {
-                  this.logger.log(`Page ${page.name}: Vừa đăng cách đây ${diffMinutesFromLastPost}m (< 15m). Chờ thêm.`);
-                  break;
-                }
+            for (const candidate of candidateSlots) {
+              const slotMs = candidate.slotTime.getTime();
+              const diffFromSlotMs = nowMs - slotMs;
 
-                shouldPublish = true;
+              // Slot này chưa tới giờ đăng (vẫn còn trong tương lai) -> bỏ qua
+              if (diffFromSlotMs < 0) {
+                continue;
+              }
+
+              // Slot này đã quá hạn hơn 120 phút -> đã quá hạn, không bù nữa
+              if (diffFromSlotMs > TOLERANCE_WINDOW_MS) {
+                continue;
+              }
+
+              /**
+               * Kiểm tra xem slot này ĐÃ CÓ BÀI ĐĂNG THÀNH CÔNG NÀO CHƯA
+               * Một bài đăng được tính cho slot này nếu posted_at nằm từ (slotMs - 15 phút) trở đi
+               */
+              const isAlreadyPublished = lastPostTime && (lastPostTime.getTime() >= slotMs - 15 * 60 * 1000);
+
+              if (isAlreadyPublished) {
+                // Slot này đã xuất bản thành công -> tiếp tục kiểm tra các slot khác
+                continue;
+              }
+
+              /** Nếu Page vừa đăng bài gần nhất cách đây dưới 15 phút -> Chờ thêm để đảm bảo giãn cách an toàn */
+              if (diffMinutesFromLastPost < 15) {
+                this.logger.log(`Page ${page.name}: Slot ${candidate.timeStr} chưa đăng nhưng bài trước vừa đăng cách đây ${diffMinutesFromLastPost}m (< 15m). Chờ thêm.`);
                 break;
               }
+
+              // Slot này đủ điều kiện xuất bản ngay!
+              shouldPublish = true;
+              slotLatenessMinutes = Math.floor(diffFromSlotMs / 60000);
+              this.logger.log(`Page ${page.name}: Slot ${candidate.timeStr} đủ điều kiện xuất bản (Đã qua giờ hẹn: ${slotLatenessMinutes} phút).`);
+              break;
             }
           }
         } else {
@@ -240,6 +275,7 @@ export class ZTTeamPublisherCron {
           const gapMinutes = schedule_immediate_gap_minutes || 60;
           if (!lastPostTime || diffMinutesFromLastPost >= gapMinutes) {
             shouldPublish = true;
+            slotLatenessMinutes = lastPostTime ? diffMinutesFromLastPost - gapMinutes : 999;
           } else {
             this.logger.log(`Page ${page.name}: Waiting for gap (${diffMinutesFromLastPost}/${gapMinutes}m).`);
           }
@@ -309,6 +345,7 @@ export class ZTTeamPublisherCron {
             selectedItem,
             diffMinutesFromLastPost,
             itemCreatedAt: new Date(itemDate).getTime(),
+            slotLatenessMinutes,
           });
         } else {
           this.logger.log(`Page ${page.name}: Không có bài viết đáp ứng điều kiện theo cấu hình "${post_format}" -> Bỏ qua, không gọi API đăng Facebook.`);
@@ -320,11 +357,15 @@ export class ZTTeamPublisherCron {
       }
 
       /**
-       * ZTTeam: Thuật toán điều phối hàng đợi (Priority Dispatcher):
-       * 1. Ưu tiên Page nào lâu nhất chưa có bài đăng (diffMinutesFromLastPost giảm dần)
-       * 2. Nếu bằng nhau, ưu tiên bài viết được tạo sớm nhất (itemCreatedAt tăng dần)
+       * ZTTeam: Thuật toán điều phối hàng đợi thông minh (Smart Priority Dispatcher):
+       * 1. Ưu tiên hàng đầu cho Page có slot bị trễ nhiều nhất (slotLatenessMinutes giảm dần) để bắt kịp slot đã lỡ
+       * 2. Nếu bằng nhau, ưu tiên Page lâu nhất chưa có bài đăng (diffMinutesFromLastPost giảm dần)
+       * 3. Cuối cùng ưu tiên bài viết được tạo sớm nhất (itemCreatedAt tăng dần)
        */
       eligibleCandidates.sort((a, b) => {
+        if (b.slotLatenessMinutes !== a.slotLatenessMinutes) {
+          return b.slotLatenessMinutes - a.slotLatenessMinutes;
+        }
         if (b.diffMinutesFromLastPost !== a.diffMinutesFromLastPost) {
           return b.diffMinutesFromLastPost - a.diffMinutesFromLastPost;
         }
@@ -335,10 +376,10 @@ export class ZTTeamPublisherCron {
 
       /**
        * ZTTeam Multi-Page Dispatcher:
-       * Điều phối tối đa 3 Page khác nhau trong mỗi phút để giải tỏa hàng đợi
-       * Giãn cách an toàn 5 giây giữa các Page khác nhau để Meta không bao giờ báo lỗi burst API
+       * Điều phối tối đa 6 Page khác nhau trong mỗi phút để giải tỏa hàng đợi nhanh chóng
+       * Giãn cách an toàn 2.5 giây giữa các Page khác nhau (Meta Rate Limit áp dụng theo từng Page độc lập)
        */
-      const MAX_POSTS_PER_MINUTE_BATCH = 3;
+      const MAX_POSTS_PER_MINUTE_BATCH = 6;
       const dispatchedPageIds = new Set<string>();
 
       for (const candidate of eligibleCandidates) {
@@ -352,12 +393,12 @@ export class ZTTeamPublisherCron {
         }
 
         if (dispatchedPageIds.size > 0) {
-          this.logger.log(`[ZTTeam Global Dispatcher] Giãn cách bảo vệ Meta: Chờ 5s trước khi xuất bản Page tiếp theo...`);
-          await new Promise(resolve => setTimeout(resolve, 5000));
+          this.logger.log(`[ZTTeam Global Dispatcher] Giãn cách an toàn: Chờ 2.5s trước khi xuất bản Page tiếp theo...`);
+          await new Promise(resolve => setTimeout(resolve, 2500));
         }
 
         dispatchedPageIds.add(page.id);
-        this.logger.log(`[ZTTeam Global Dispatcher] Đang xuất bản (${dispatchedPageIds.size}/${MAX_POSTS_PER_MINUTE_BATCH}) cho Page: ${page.name} (Đã chờ: ${candidate.diffMinutesFromLastPost === Infinity ? 'Mới/Vô cực' : candidate.diffMinutesFromLastPost + 'm'})`);
+        this.logger.log(`[ZTTeam Global Dispatcher] Đang xuất bản (${dispatchedPageIds.size}/${MAX_POSTS_PER_MINUTE_BATCH}) cho Page: ${page.name} (Đã chờ: ${candidate.diffMinutesFromLastPost === Infinity ? 'Mới/Vô cực' : candidate.diffMinutesFromLastPost + 'm'} | Độ trễ slot: ${candidate.slotLatenessMinutes}m)`);
 
         try {
           if (selectedItem.type === 'reel_legacy') {

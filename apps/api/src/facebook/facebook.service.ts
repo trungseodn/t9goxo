@@ -575,6 +575,7 @@ export class ZTTeamFacebookService {
       const ztteam_vnMonth = parseInt(ztteam_parts.find(p => p.type === 'month')?.value || '1', 10) - 1;
       const ztteam_vnDay = parseInt(ztteam_parts.find(p => p.type === 'day')?.value || '1', 10);
 
+      const pad = (n: number) => String(n).padStart(2, '0');
       const ztteam_currentMinutes = ztteam_vnH * 60 + ztteam_vnM;
       const ztteam_sortedTimes = [...page.schedule_fixed_times].sort();
       let ztteam_foundTime: Date | null = null;
@@ -584,7 +585,8 @@ export class ZTTeamFacebookService {
         const [h, m] = t.split(':').map(Number);
         const tMinutes = h * 60 + m;
         if (tMinutes > ztteam_currentMinutes) {
-          ztteam_foundTime = new Date(Date.UTC(ztteam_vnYear, ztteam_vnMonth, ztteam_vnDay, h - 7, m, 0, 0));
+          const isoStr = `${ztteam_vnYear}-${pad(ztteam_vnMonth + 1)}-${pad(ztteam_vnDay)}T${pad(h)}:${pad(m)}:00+07:00`;
+          ztteam_foundTime = new Date(isoStr);
           break;
         }
       }
@@ -592,7 +594,12 @@ export class ZTTeamFacebookService {
       /** ZTTeam: Nếu tất cả khung giờ hôm nay đã qua, lấy khung giờ đầu tiên của ngày mai */
       if (!ztteam_foundTime && ztteam_sortedTimes.length > 0) {
         const [h, m] = ztteam_sortedTimes[0].split(':').map(Number);
-        ztteam_foundTime = new Date(Date.UTC(ztteam_vnYear, ztteam_vnMonth, ztteam_vnDay + 1, h - 7, m, 0, 0));
+        const nextDayDate = new Date(Date.UTC(ztteam_vnYear, ztteam_vnMonth, ztteam_vnDay + 1, 12, 0, 0));
+        const nY = nextDayDate.getUTCFullYear();
+        const nM = nextDayDate.getUTCMonth() + 1;
+        const nD = nextDayDate.getUTCDate();
+        const isoStr = `${nY}-${pad(nM)}-${pad(nD)}T${pad(h)}:${pad(m)}:00+07:00`;
+        ztteam_foundTime = new Date(isoStr);
       }
 
       nextPublishTime = ztteam_foundTime;
