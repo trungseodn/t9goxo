@@ -119,6 +119,7 @@ export class ZTTeamPublisherCron {
         selectedItem: { type: 'reel_legacy' | 'image_reel' | 'image_only'; data: any };
         diffMinutesFromLastPost: number;
         itemCreatedAt: number;
+        slotLatenessMinutes: number;
       }> = [];
 
       for (const [pageId, page] of pagesMap.entries()) {
