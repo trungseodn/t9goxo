@@ -90,7 +90,8 @@ export class ZTTeamRenderCron implements OnApplicationBootstrap {
           ],
         },
         include: { page: true },
-        orderBy: { created_at: 'desc' },
+        /** FIFO giống publisher.cron (đăng bài cũ nhất trước) -> render bài cũ trước để kịp có video khi tới lượt đăng */
+        orderBy: { created_at: 'asc' },
         take: 2,
       });
 

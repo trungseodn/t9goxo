@@ -289,7 +289,19 @@ export class ZTTeamPublisherCron {
         /** 5. Phân loại bài đăng Video Reel và Ảnh cho Page này */
         const pageReelsOld = pendingReels.filter(r => r.page_id === pageId);
         const pageImagesWithVideo = pendingImages.filter(i => i.page_id === pageId && i.video_url);
-        const pageImagesOnly = pendingImages.filter(i => i.page_id === pageId && !i.video_url);
+        /**
+         * ZTTeam: Bài đang chờ render video (video_status = PENDING) KHÔNG được coi là "ảnh sẵn sàng".
+         * Trước đây crawler tạo bài với status COMPLETED + video_status PENDING, publisher lấy ngay làm ảnh
+         * trước khi video kịp render -> Page cấu hình reel/mixed bị đăng ảnh hàng loạt.
+         * Chỉ fallback sang ảnh khi video chờ quá VIDEO_RENDER_WAIT_MINUTES (tránh kẹt bài nếu render lỗi/treo).
+         */
+        const VIDEO_RENDER_WAIT_MINUTES = 180;
+        const pageImagesOnly = pendingImages.filter(i => {
+          if (i.page_id !== pageId || i.video_url) return false;
+          if (i.video_status !== 'PENDING') return true;
+          const ageMinutes = (now.getTime() - new Date(i.created_at).getTime()) / 60000;
+          return ageMinutes >= VIDEO_RENDER_WAIT_MINUTES;
+        });
 
         /** Tập hợp tất cả các ứng viên Reel */
         const allAvailableReels = [
